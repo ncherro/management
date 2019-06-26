@@ -7,6 +7,7 @@
 #
 # export JIRA_USERNAME=my-jira-username
 # export JIRA_PASSWORD=my-jira-password
+# export JIRA_BOARD_ID=1234
 # export JIRA_BASE_URL=https://jira.company.com (optional)
 #
 # Arguments
@@ -23,13 +24,18 @@ require 'json'
 require 'fileutils'
 
 # uncomment, and `gem install pry-coolline`, to debug
-# require 'pry-coolline'
+require 'pry-coolline'
 
 JIRA_USERNAME = ENV.fetch('JIRA_USERNAME').freeze
 JIRA_PASSWORD = ENV.fetch('JIRA_PASSWORD').freeze
+JIRA_BOARD_ID = ENV.fetch('JIRA_BOARD_ID').freeze
 JIRA_BASE_URL = ENV.fetch('JIRA_BASE_URL', 'https://jira.namely.land').freeze
 
 JIRA_KEY_STORY_POINTS = 'customfield_10005'.freeze
+JIRA_KEY_ISSUE_TYPE = 'issuetype'.freeze
+JIRA_KEY_LABELS = 'labels'.freeze
+JIRA_KEY_PROJECT = 'project'.freeze
+
 JIRA_FIELD_NAME_STORY_POINTS = 'Story Points'.freeze
 
 if ARGV.length != 2
@@ -99,6 +105,39 @@ class JiraClient
     end.to_h
   end
 
+  # closed_sprints returns a list of sprints belonging to the JIRA_BOARD_ID
+  # that have been closed - it provides timespans we report against
+  def closed_sprint_times
+    per_page = 50
+    offset = 0
+    path = "rest/agile/1.0/board/#{JIRA_BOARD_ID}/sprint?maxResults=#{per_page}"
+    sprints = []
+    data, status = parse_json(request(path: path))
+    loop do
+      sprints += data['values'].select { |s| s['state'] == 'closed' }
+      break if data['isLast'] || status != '200'
+
+      offset += per_page
+      data, status = parse_json(request(path: "#{path}&startAt=#{offset}"))
+    end
+    # sort by startDate and map to [startDate, endDate]
+    times = sprints.sort_by { |s| s['startDate'] }.map do |s|
+      [DateTime.parse(s['startDate']), DateTime.parse(s['endDate'])]
+    end
+    # ensure there are no gaps
+    times.each_with_index do |time, idx|
+      next_time = times[idx + 1]
+      time[1] = next_time[0] if next_time
+    end
+    times
+  end
+
+  # format_time accepts a DateTime object and returns a string that can be used
+  # in JQL
+  def format_time(dt)
+    dt.strftime('%Y-%m-%d %H:%M')
+  end
+
   private
 
   # request accepts a path, method, and optional data argument and executes a
@@ -155,25 +194,23 @@ class Employee
     @counts = {}
   end
 
-  def is_active_on(date)
-    @start_date < date
+  def active_on?(date_s)
+    @start_date < Date.parse(date_s)
   end
 
   def set_counts
     jql = "engineer=#{@username} AND resolution=Done"
-    today = Date.today
-    first_of_month = (today - today.mday + 1)
-    date = first_of_month - 365
-    while date < first_of_month
-      unless is_active_on(date)
+
+    JIRA_CLIENT.closed_sprint_times.each do |times|
+      start_time = JIRA_CLIENT.format_time(times[0])
+      end_time = JIRA_CLIENT.format_time(times[1])
+      unless active_on?(start_time)
         # person was not on team yet
-        @counts[date] = { 'total' => 0, 'issues' => [] }
-        date = date.next_month
+        @counts[start_time] = { 'total' => 0, 'issues' => [] }
         next
       end
 
-      eom = date.next_month - 1
-      q = "#{jql} AND resolutiondate >= #{date} AND resolutiondate <= #{eom}"
+      q = "#{jql} AND resolutiondate >= \"#{start_time}\" AND resolutiondate < \"#{end_time}\""
 
       # check the cache first
       data = nil
@@ -185,7 +222,8 @@ class Employee
         # fetch issues, only concerned about the story points
         data, status = JIRA_CLIENT.jql(
           q,
-          fields: [JIRA_KEY_STORY_POINTS]
+          fields: [JIRA_KEY_STORY_POINTS, JIRA_KEY_ISSUE_TYPE, JIRA_KEY_LABELS,
+                   JIRA_KEY_PROJECT]
         )
 
         raise "Error getting #{@username} - #{q}\n#{data}" if status != '200'
@@ -207,9 +245,7 @@ class Employee
         end
       end
 
-      @counts[date] = data
-
-      date = date.next_month
+      @counts[start_time] = data
     end
   end
 end
@@ -241,10 +277,10 @@ def crunch_numbers
         date,
         data['total'],
         total_points,
-        ee.is_active_on(date)
+        ee.active_on?(date)
       ]
 
-      next unless ee.is_active_on(date)
+      next unless ee.active_on?(date)
 
       # populate the averages
       average_issues[date] ||= []
@@ -264,7 +300,7 @@ def crunch_numbers
     average_points[date] = (val.reduce(&:+) / len.to_f).round(2)
   end
 
-  headers = %w[user month total_issues total_points active average_issues_delta_sum average_issues_delta_perc average_points_delta_sum average_points_delta_perc]
+  headers = %w[user sprint_start total_issues total_points active average_issues_delta_sum average_issues_delta_perc average_points_delta_sum average_points_delta_perc]
   CSV.open(CSV_FILE, 'w+') do |csv|
     csv << headers
 
