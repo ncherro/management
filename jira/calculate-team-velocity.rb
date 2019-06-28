@@ -7,7 +7,6 @@
 #
 # export JIRA_USERNAME=my-jira-username
 # export JIRA_PASSWORD=my-jira-password
-# export JIRA_BOARD_ID=1234
 # export JIRA_BASE_URL=https://jira.company.com (optional)
 #
 # Arguments
@@ -28,7 +27,6 @@ require 'pry-coolline'
 
 JIRA_USERNAME = ENV.fetch('JIRA_USERNAME').freeze
 JIRA_PASSWORD = ENV.fetch('JIRA_PASSWORD').freeze
-JIRA_BOARD_ID = ENV.fetch('JIRA_BOARD_ID').freeze
 JIRA_BASE_URL = ENV.fetch('JIRA_BASE_URL', 'https://jira.namely.land').freeze
 
 JIRA_KEY_STORY_POINTS = 'customfield_10005'.freeze
@@ -38,13 +36,14 @@ JIRA_KEY_PROJECT = 'project'.freeze
 
 JIRA_FIELD_NAME_STORY_POINTS = 'Story Points'.freeze
 
-if ARGV.length != 2
-  raise 'Two arguments are required - list of users, and path to output file'
+if ARGV.length != 3
+  raise 'Three arguments are required - board id, list of users, and path to output file'
 end
 
 # grab args
-EMPLOYEES = ARGV[0].freeze
-CSV_FILE = ARGV[1].freeze
+JIRA_BOARD_ID = ARGV[0].freeze
+EMPLOYEES = ARGV[1].freeze
+CSV_FILE = ARGV[2].freeze
 
 # if JIRA_CACHE_FILE is set as an env var, then JQL data will be cached to it -
 # key = query, val = the response (json)
@@ -186,15 +185,22 @@ JIRA_CLIENT = JiraClient.new(
 
 # Employee describes a direct report
 class Employee
-  attr_reader :username, :start_date, :counts
+  attr_reader :username, :start_date, :end_date, :counts
 
-  def initialize(username:, start_date:)
+  def initialize(username:, start_date:, end_date:)
     @username = username
     @start_date = Date.parse(start_date)
+    @end_date = Date.parse(end_date) if end_date
     @counts = {}
   end
 
+  # active_on? returns true if this EE's start_date is < the date passed, and
+  # their end_date (if set) is > the date passed
   def active_on?(date_s)
+    if @end_date
+      return @start_date < Date.parse(date_s) && @end_date > Date.parse(date_s)
+    end
+
     @start_date < Date.parse(date_s)
   end
 
@@ -215,6 +221,7 @@ class Employee
       # check the cache first
       data = nil
       if JIRA_CACHE && JIRA_CACHE[q]
+        p "Read #{q} from cache"
         data = JSON.parse(JIRA_CACHE[q])
       else
         p "Fetching #{q}"
@@ -252,13 +259,17 @@ end
 
 def crunch_numbers
   # set up EEs
-  ees = []
-
-  EMPLOYEES.split(',').each do |item|
-    username, start_date = item.split('|')
-    ees << Employee.new(username: username, start_date: start_date)
+  ees = EMPLOYEES.split(',').map do |item|
+    username, start_date, end_date = item.split('|')
+    end_date = nil if end_date == 'null'
+    ee = Employee.new(
+      username: username,
+      start_date: start_date,
+      end_date: end_date
+    )
+    ee.set_counts
+    ee
   end
-  ees.each(&:set_counts)
 
   # prep the data
   csv_data = []
