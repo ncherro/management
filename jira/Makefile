@@ -1,6 +1,5 @@
 .PHONY: run
-run: clean-output
-	mkdir -p output
+run: clean-output setup
 	docker run -it --rm \
 		-v $(shell pwd):/app \
 		-e JIRA_USERNAME=${JIRA_USERNAME} \
@@ -15,6 +14,10 @@ build:
 .PHONY: build-no-cache
 build-no-cache:
 	docker build --no-cache -t team-velocity .
+
+.PHONY: setup
+setup:
+	mkdir -p output
 
 .PHONY: clean-output
 clean-output:
