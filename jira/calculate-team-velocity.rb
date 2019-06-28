@@ -7,7 +7,7 @@
 #
 # export JIRA_USERNAME=my-jira-username
 # export JIRA_PASSWORD=my-jira-password
-# export JIRA_BASE_URL=https://jira.company.com (optional)
+# export JIRA_BASE_URL=https://jira.company.com
 #
 # Arguments
 # - comma-separated list of username|start-date
@@ -25,7 +25,7 @@ require 'pry'
 
 JIRA_USERNAME = ENV.fetch('JIRA_USERNAME').freeze
 JIRA_PASSWORD = ENV.fetch('JIRA_PASSWORD').freeze
-JIRA_BASE_URL = ENV.fetch('JIRA_BASE_URL', 'https://jira.namely.land').freeze
+JIRA_BASE_URL = ENV.fetch('JIRA_BASE_URL').freeze
 
 JIRA_KEY_STORY_POINTS = 'customfield_10005'.freeze
 JIRA_KEY_ISSUE_TYPE = 'issuetype'.freeze

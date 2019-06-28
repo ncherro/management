@@ -4,6 +4,7 @@ run: clean-output setup
 		-v $(shell pwd):/app \
 		-e JIRA_USERNAME=${JIRA_USERNAME} \
 		-e JIRA_PASSWORD=${JIRA_PASSWORD} \
+		-e JIRA_BASE_URL=${JIRA_BASE_URL} \
 		-e JIRA_CACHE_FILE=/app/cache/cache.txt \
 		team-velocity:latest
 
