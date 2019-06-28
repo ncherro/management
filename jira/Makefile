@@ -1,12 +1,11 @@
 .PHONY: run
-run:
+run: clean-output
+	mkdir -p output
 	docker run -it --rm \
-		-v $(shell pwd)/cache:/tmp/jira-cache \
-		-v $(shell pwd)/data:/app/data \
-		-v $(shell pwd)/output:/tmp/output \
+		-v $(shell pwd):/app \
 		-e JIRA_USERNAME=${JIRA_USERNAME} \
 		-e JIRA_PASSWORD=${JIRA_PASSWORD} \
-		-e JIRA_CACHE_FILE=/tmp/jira-cache/cache.txt \
+		-e JIRA_CACHE_FILE=/app/cache/cache.txt \
 		team-velocity:latest
 
 .PHONY: build
@@ -16,3 +15,7 @@ build:
 .PHONY: build-no-cache
 build-no-cache:
 	docker build --no-cache -t team-velocity .
+
+.PHONY: clean-output
+clean-output:
+	rm -Rf output
