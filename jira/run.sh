@@ -9,9 +9,9 @@ do
     board_id="$(cat $f | jq '.team.board_id')"
     team_key="$(cat $f | jq '.team.key' | tr -d '"')"
     ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-    args="${board_id} ${users} /tmp/${team_key}-${ts}.csv"
+    args="${board_id} ${users} /tmp/output/${team_key}-${ts}.csv"
 
     # call the script
-    ./calculate-team-velocity.rb $args
+    bundle exec ruby ./calculate-team-velocity.rb $args
   done
 done

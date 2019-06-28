@@ -1,1 +1,3 @@
 data/*.json
+cache/*.txt
+output/*.csv

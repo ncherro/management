@@ -21,9 +21,7 @@ require 'net/http'
 require 'uri'
 require 'json'
 require 'fileutils'
-
-# uncomment, and `gem install pry-coolline`, to debug
-require 'pry-coolline'
+require 'pry'
 
 JIRA_USERNAME = ENV.fetch('JIRA_USERNAME').freeze
 JIRA_PASSWORD = ENV.fetch('JIRA_PASSWORD').freeze
@@ -37,7 +35,8 @@ JIRA_KEY_PROJECT = 'project'.freeze
 JIRA_FIELD_NAME_STORY_POINTS = 'Story Points'.freeze
 
 if ARGV.length != 3
-  raise 'Three arguments are required - board id, list of users, and path to output file'
+  raise 'Three arguments are required - board id, list of users, and path to ' \
+    'output file'
 end
 
 # grab args
@@ -51,11 +50,12 @@ JIRA_CACHE_FILE = ENV.fetch('JIRA_CACHE_FILE', nil)
 SHRUG_DELIMITER = ' |¯\_(ツ)_/¯| '.freeze
 if JIRA_CACHE_FILE
   FileUtils.touch(JIRA_CACHE_FILE)
-  JIRA_CACHE = {}
+  jira_cache = {}
   File.readlines(JIRA_CACHE_FILE).each do |line|
     k, v = line.split(SHRUG_DELIMITER, 2)
-    JIRA_CACHE[k] = v
+    jira_cache[k] = v
   end
+  JIRA_CACHE = jira_cache.freeze
 else
   JIRA_CACHE = nil
 end
@@ -311,7 +311,9 @@ def crunch_numbers
     average_points[date] = (val.reduce(&:+) / len.to_f).round(2)
   end
 
-  headers = %w[user sprint_start total_issues total_points active average_issues_delta_sum average_issues_delta_perc average_points_delta_sum average_points_delta_perc]
+  headers = %w[user sprint_start total_issues total_points active
+               average_issues_delta_sum average_issues_delta_perc
+               average_points_delta_sum average_points_delta_perc]
   CSV.open(CSV_FILE, 'w+') do |csv|
     csv << headers
 
