@@ -187,6 +187,8 @@ CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
       val = row_data[csv_header]
       next if val.nil? || val == ''
 
+      val = val.strip
+
       # special cases
       if jira_attr == 'summary' || csv_header == 'Blocking Issues'
         val = val.gsub(/[[:space:]]+/, ' ').strip[0..254]
@@ -213,7 +215,7 @@ CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
     case status
     when '200', '201', '202'
       # append to our output csv
-      csv << [resp['key'], row_data['Date'], row_data['Summary'], row_data['Done?']]
+      csv << [resp['key'], row_data['Date'], data['summary'], row_data['Done?']]
       puts "Created #{resp['key']}"
     else
       puts "Failed to import - response status = #{status}"
