@@ -40,14 +40,6 @@ CSV_FILE = ARGV[2].freeze
 CSV_FILE_OUTPUT = "/app/output/output-#{DateTime.now}.csv"
 
 # CSV headers => Jira keys
-FIELD_MAPPINGS = {
-  # 'Done?' => '', - set in subsequent import
-  # 'Date' => '', - set in subsequent import
-  'Reporter' => 'reporter',
-  'Summary' => 'summary',
-  'Description' => 'description',
-}.freeze
-
 FIELD_MAPPINGS_CUSTOM = {
   'User ID' => 'User ID',
   'Station ID' => 'Station ID',
@@ -104,6 +96,17 @@ class JiraClient
     parse_json(request(path: path, method: 'POST', data: { 'fields': fields }))
   end
 
+  def jql(jql, fields: [], startAt: 0)
+    qs = "jql=#{jql}&startAt=#{startAt}&maxResults=500"
+    fields.any? && qs += "&fields=#{fields.join(',')}"
+    parse_json(request(path: "rest/api/2/search?#{qs}"))
+  end
+
+  def update_issue(key, data)
+    path = "rest/api/2/issue/#{key}"
+    parse_json(request(path: path, method: 'PUT', data: { 'fields': data }))
+  end
+
   # format_time accepts a DateTime object and returns a string that can be used
   # in JQL
   def format_time(dt)
@@ -147,7 +150,9 @@ class JiraClient
   # parse_json parses a Net::HTTP response body into a JSON json object
   # it returns the parsed body, and the response code
   def parse_json(response)
-    [JSON.parse(response.body), response.code]
+    parsed = nil
+    parsed = JSON.parse(response.body) if response.body
+    [parsed, response.code]
   end
 end
 
@@ -168,9 +173,7 @@ table = CSV.parse(File.read(CSV_FILE), headers: true)
 # map fields
 FIELD_MAPPINGS_ACTUAL = {}
 table.headers.compact.each do |header|
-  if FIELD_MAPPINGS[header]
-    FIELD_MAPPINGS_ACTUAL[header] = FIELD_MAPPINGS[header]
-  elsif FIELD_MAPPINGS_CUSTOM[header]
+  if FIELD_MAPPINGS_CUSTOM[header]
     # look it up
     jira_field_name = FIELD_MAPPINGS_CUSTOM[header]
     field = fields.select { |_, v| v['name'] == jira_field_name }
@@ -179,11 +182,26 @@ table.headers.compact.each do |header|
   end
 end
 
-# iterate over the CSV table and create tickets
+# map IDX to rows
+summary_map = {}
+table.each do |row|
+  row_data = row.to_h
+  summary_map[row['IDX']] = row_data
+end
+
+
 CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
-  csv << %w(key created summary done)
-  table.each do |row|
-    row_data = row.to_h
+  csv << %w(key created summary)
+
+  # fetch all issues in the project
+  all_issues = JIRA_CLIENT.jql("project=#{JIRA_PROJECT_KEY}", fields: ['summary'])
+  all_issues = all_issues[0]['issues']
+  all_issues.each do |issue|
+    summary = issue['fields']['summary']
+    issue_key = issue['key']
+
+    idx = summary.split(' - ').first
+    row_data = summary_map[idx]
     data = {}
     FIELD_MAPPINGS_ACTUAL.each do |csv_header, jira_attr|
       val = row_data[csv_header]
@@ -192,18 +210,8 @@ CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
       val = val.strip
 
       # special cases
-      if jira_attr == 'summary' || csv_header == 'Blocking Issues'
+      if csv_header == 'Blocking Issues'
         val = val.gsub(/[[:space:]]+/, ' ').strip[0..254]
-      end
-
-      # value map, if necessary
-      if VALUE_MAPPINGS[csv_header]
-        # attempt to find the value mapping, fall back to original value
-        val = VALUE_MAPPINGS[csv_header][val] || val
-        # special case :(
-        if csv_header == 'Reporter'
-          val = { 'name' => val }
-        end
       end
 
       # set the data
@@ -213,14 +221,14 @@ CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
     # skip if nothing to do
     next if data == {}
 
-    resp, status = JIRA_CLIENT.create_issue(data)
+    resp, status = JIRA_CLIENT.update_issue(issue_key, data)
     case status
-    when '200', '201', '202'
+    when '200', '201', '202', '204'
       # append to our output csv
-      csv << [resp['key'], row_data['Date'], data['summary'], row_data['Done?']]
-      puts "Created #{resp['key']}"
+      csv << [issue_key, issue['Date'], issue['summary']]
+      puts "Updated #{issue_key}"
     else
-      puts "Failed to import - response status = #{status}"
+      puts "Failed to update #{issue_key} - response status = #{status}"
       p row_data
       p data
       p resp
@@ -228,4 +236,4 @@ CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
   end
 end
 
-puts "Done! - now use the output file to run an import into Jira to set the created at date and issue statuses"
+p "Done!"

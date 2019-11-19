@@ -1,3 +1,3 @@
 #!/bin/bash
 
-bundle exec ruby ./create-issues.rb ST "Data Fix" /app/data/import.csv
+bundle exec ruby ./update-issues.rb SUP "Data Fix" /app/data/input.csv

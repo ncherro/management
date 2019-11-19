@@ -5,15 +5,15 @@ run: clean-output setup
 		-e JIRA_EMAIL=${JIRA_EMAIL} \
 		-e JIRA_API_KEY=${JIRA_API_KEY} \
 		-e JIRA_BASE_URL=${JIRA_BASE_URL} \
-		create-issues:latest
+		update-issues:latest
 
 .PHONY: build
 build:
-	docker build -t create-issues .
+	docker build -t update-issues .
 
 .PHONY: build-no-cache
 build-no-cache:
-	docker build --no-cache -t create-issues .
+	docker build --no-cache -t update-issues .
 
 .PHONY: setup
 setup:
