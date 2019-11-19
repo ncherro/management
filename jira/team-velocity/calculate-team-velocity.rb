@@ -72,7 +72,7 @@ class JiraClient
   #
   # TODO: handle multiple pages of results
   def jql(jql, fields: [], startAt: 0)
-    qs = "jql=#{jql}&startAt=#{startAt}&maxResults=100"
+    qs = "jql=#{jql}&startAt=#{startAt}&maxResults=500"
     fields.any? && qs += "&fields=#{fields.join(',')}"
     parse_json(request(path: "rest/api/2/search?#{qs}"))
   end
