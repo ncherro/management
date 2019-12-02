@@ -30,43 +30,36 @@ end
 
 # grab args
 JQL = ARGV[0].freeze
-CSV_FILE_OUTPUT = "/app/output/output-#{DateTime.now}.csv"
+CSV_FILE_OUTPUT = "/app/output/output.csv"
 
 JIRA_PER_PAGE = 50.freeze
 
+FIELD_MAP = {
+  'summary' => 'summary',
+  'original_start_date' => 'customfield_10054',
+  'original_duedate' => 'customfield_10055',
+  'start_date' => 'customfield_10016',
+  'duedate' => 'duedate',
+  'qa_days_required' => 'customfield_10056',
+  'ship_date' => 'customfield_10057',
+}
+
 class Issue
-  attr_reader :summary, :key, :due_date, :start_date, :due_date_history,
-    :start_date_history, :status
+  attr_reader :summary, :key, :due_date, :start_date, :original_due_date,
+    :original_start_date, :qa_days_required, :ship_date, :status
 
   def initialize(data)
     fields = data['fields']
     @key = data['key']
-    @summary = fields['summary']
-    @due_date = fields['duedate']
-    @start_date = fields['customfield_10016']
     @status = fields['status']['name']
-    @due_date_history = []
-    @start_date_history = []
-    parse_changelog(data)
-  end
 
-  private
-
-  def parse_history(histories)
-    histories.each do |change|
-      change['items'].each do |item|
-        if item['field'] == 'duedate'
-          @due_date_history << item['to']
-        elsif item['field'] == 'Start date'
-          @start_date_history << item['to']
-        end
-      end
-    end
-  end
-
-  def parse_changelog(data)
-    # TODO - implement changelog pagination
-    parse_history(data['changelog']['histories'])
+    @summary = fields[FIELD_MAP['summary']]
+    @original_start_date = fields[FIELD_MAP['original_start_date']]
+    @original_due_date = fields[FIELD_MAP['original_duedate']]
+    @start_date = fields[FIELD_MAP['start_date']]
+    @due_date = fields[FIELD_MAP['duedate']]
+    @qa_days_required = fields[FIELD_MAP['qa_days_required']]
+    @ship_date = fields[FIELD_MAP['shipdate']]
   end
 end
 
@@ -161,26 +154,28 @@ JIRA_CLIENT = JiraClient.new(
 # fetch the issues
 issues_raw = JIRA_CLIENT.jql_all(
   JQL,
-  expand_changelog: true,
   fields: %w(customfield_10016 summary duedate status)
 )
 
 issues = issues_raw.map do |issue_data|
   Issue.new(issue_data)
-end
+end.sort_by { |issue| issue.due_date }
 
 CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
-  csv << %w(key summary status start_date due_date start_date_history
-  due_date_history)
+  csv << %w(
+    key
+    summary
+    start_date
+    due_date
+    status
+  )
   issues.each do |issue|
     csv << [
       issue.key,
       issue.summary,
-      issue.status,
       issue.start_date,
       issue.due_date,
-      issue.start_date_history.join(','),
-      issue.due_date_history.join(',')
+      issue.status,
     ]
   end
 end
