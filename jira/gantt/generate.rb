@@ -35,32 +35,52 @@ CSV_FILE_OUTPUT = "/app/output/output.csv"
 JIRA_PER_PAGE = 50.freeze
 
 FIELD_MAP = {
+  'key' => 'key',
+  'status' => 'status',
   'summary' => 'summary',
   'original_start_date' => 'customfield_10054',
-  'original_duedate' => 'customfield_10055',
+  'original_due_date' => 'customfield_10055',
   'start_date' => 'customfield_10016',
-  'duedate' => 'duedate',
+  'due_date' => 'duedate',
   'qa_days_required' => 'customfield_10056',
   'ship_date' => 'customfield_10057',
+  'rank' => 'customfield_10009',
+  'eng_team' => 'customfield_10064',
+  'product_spec_url' => 'customfield_10061',
+  'tech_spec_url' => 'customfield_10062'
 }
 
 class Issue
-  attr_reader :summary, :key, :due_date, :start_date, :original_due_date,
-    :original_start_date, :qa_days_required, :ship_date, :status
+  attr_reader :dev_days
 
   def initialize(data)
     fields = data['fields']
+
     @key = data['key']
     @status = fields['status']['name']
-
     @summary = fields[FIELD_MAP['summary']]
+
     @original_start_date = fields[FIELD_MAP['original_start_date']]
-    @original_due_date = fields[FIELD_MAP['original_duedate']]
+    @original_due_date = fields[FIELD_MAP['original_due_date']]
     @start_date = fields[FIELD_MAP['start_date']]
-    @due_date = fields[FIELD_MAP['duedate']]
+    @due_date = fields[FIELD_MAP['due_date']]
     @qa_days_required = fields[FIELD_MAP['qa_days_required']]
-    @ship_date = fields[FIELD_MAP['shipdate']]
+    @ship_date = fields[FIELD_MAP['ship_date']]
+    @rank = fields[FIELD_MAP['rank']]
+    @eng_team = fields[FIELD_MAP['eng_team']]
+    @product_spec_url = fields[FIELD_MAP['product_spec_url']]
+    @tech_spec_url = fields[FIELD_MAP['tech_spec_url']]
+
+    @dev_days = 0
+    if @start_date && @due_date
+      @dev_days = (Date.parse(@due_date) - Date.parse(@start_date)).to_i
+    end
   end
+end
+
+# HACK!
+FIELD_MAP.keys.each do |k|
+  Issue.class_eval("attr_reader :#{k}")
 end
 
 # JiraClient wraps logic around connecting to Jira and executing JQL queries
@@ -154,29 +174,18 @@ JIRA_CLIENT = JiraClient.new(
 # fetch the issues
 issues_raw = JIRA_CLIENT.jql_all(
   JQL,
-  fields: %w(customfield_10016 summary duedate status)
+  fields: FIELD_MAP.values
 )
 
 issues = issues_raw.map do |issue_data|
   Issue.new(issue_data)
 end.sort_by { |issue| issue.due_date }
 
+headers = FIELD_MAP.keys + ['dev_days']
 CSV.open(CSV_FILE_OUTPUT, 'wb') do |csv|
-  csv << %w(
-    key
-    summary
-    start_date
-    due_date
-    status
-  )
+  csv << headers
   issues.each do |issue|
-    csv << [
-      issue.key,
-      issue.summary,
-      issue.start_date,
-      issue.due_date,
-      issue.status,
-    ]
+    csv << FIELD_MAP.keys.map { |k| issue.send(k.to_sym) } + [issue.dev_days]
   end
 end
 
